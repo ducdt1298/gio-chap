@@ -96,6 +96,57 @@ export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS journal_events (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        event_type TEXT NOT NULL DEFAULT 'custom',
+        event_date_solar TEXT NOT NULL,
+        event_date_lunar TEXT DEFAULT '',
+        ancestor_id TEXT,
+        notes TEXT DEFAULT '',
+        total_expense INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (ancestor_id) REFERENCES ancestors(id) ON DELETE SET NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS journal_photos (
+        id TEXT PRIMARY KEY,
+        event_id TEXT NOT NULL,
+        photo_uri TEXT NOT NULL,
+        caption TEXT DEFAULT '',
+        sort_order INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (event_id) REFERENCES journal_events(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS shopping_items (
+        id TEXT PRIMARY KEY,
+        event_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        quantity TEXT DEFAULT '',
+        estimated_price INTEGER DEFAULT 0,
+        actual_price INTEGER DEFAULT 0,
+        is_checked INTEGER DEFAULT 0,
+        category TEXT DEFAULT 'other',
+        sort_order INTEGER DEFAULT 0,
+        FOREIGN KEY (event_id) REFERENCES journal_events(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS recipes (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        description TEXT DEFAULT '',
+        ingredients TEXT DEFAULT '',
+        instructions TEXT DEFAULT '',
+        serving_size TEXT DEFAULT '',
+        prep_time TEXT DEFAULT '',
+        event_types TEXT DEFAULT '',
+        photo_uri TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
     `);
   }
   return db;

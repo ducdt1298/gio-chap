@@ -192,10 +192,10 @@ export default function HomeScreen() {
 
         <TouchableOpacity
           style={[styles.quickActionBtn, { backgroundColor: '#5C6B3C' }]}
-          onPress={() => router.push('/(tabs)/calendar')}
+          onPress={() => router.push('/journal')}
         >
-          <Text style={styles.quickActionIcon}>📅</Text>
-          <Text style={styles.quickActionText}>Lịch Âm</Text>
+          <Text style={styles.quickActionIcon}>📓</Text>
+          <Text style={styles.quickActionText}>Nhật ký</Text>
         </TouchableOpacity>
       </View>
 
