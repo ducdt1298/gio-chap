@@ -19,6 +19,9 @@ export default function TabLayout() {
         tabBarStyle: {
           backgroundColor: colorScheme === 'dark' ? Colors.dark.surface : Colors.light.surface,
           borderTopColor: colors.border,
+          height: Platform.OS === 'ios' ? 85 : Platform.OS === 'android' ? 65 : 60,
+          paddingBottom: Platform.OS === 'ios' ? 25 : Platform.OS === 'android' ? 10 : 5,
+          paddingTop: 5,
           ...Platform.select({
             ios: {
               shadowColor: '#000',
