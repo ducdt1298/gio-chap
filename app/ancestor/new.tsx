@@ -3,7 +3,7 @@
  * Create a new ancestor profile with lunar death date.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import {
   Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import Toast, { type ToastRef } from '@/components/Toast';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
 
@@ -45,6 +46,7 @@ export default function NewAncestorScreen() {
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [showRankPicker, setShowRankPicker] = useState(false);
   const [saving, setSaving] = useState(false);
+  const toastRef = useRef<ToastRef>(null);
 
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -95,9 +97,8 @@ export default function NewAncestorScreen() {
       // Recalculate reminders with new ancestor
       recalculateAllReminders().catch(console.error);
 
-      Alert.alert('Thành công', `Đã lưu hồ sơ ${familyRank} ${fullName}`, [
-        { text: 'OK', onPress: () => router.back() },
-      ]);
+      toastRef.current?.show(`Đã lưu hồ sơ ${familyRank} ${fullName}`, 'success');
+      setTimeout(() => router.back(), 1200);
     } catch (error) {
       console.error('Error saving ancestor:', error);
       Alert.alert('Lỗi', 'Không thể lưu. Vui lòng thử lại.');
@@ -111,6 +112,15 @@ export default function NewAncestorScreen() {
       style={{ flex: 1 }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
+      <Toast ref={toastRef} />
+      {/* Header */}
+      <View style={[styles.header, { backgroundColor: Colors.secondary }]}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <Text style={styles.backText}>← Hủy</Text>
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Thêm Gia Tiên</Text>
+        <View style={{ width: 60 }} />
+      </View>
       <ScrollView
         style={[styles.container, { backgroundColor: colors.background }]}
         contentContainerStyle={styles.content}
@@ -267,6 +277,19 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  header: {
+    paddingTop: Platform.OS === 'web' ? Spacing.xl : 60,
+    paddingBottom: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomLeftRadius: BorderRadius.lg,
+    borderBottomRightRadius: BorderRadius.lg,
+  },
+  backBtn: { padding: Spacing.xs },
+  backText: { color: '#fff', fontSize: FontSizes.md, fontWeight: '600' },
+  headerTitle: { fontSize: FontSizes.lg, fontWeight: '800', color: '#fff' },
   content: {
     padding: Spacing.lg,
   },

@@ -3,7 +3,7 @@
  * Configure homeowner name, address, theme, and notification preferences.
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import {
   Platform,
   Alert,
 } from 'react-native';
+import Toast, { type ToastRef } from '@/components/Toast';
 import { useFocusEffect } from '@react-navigation/native';
 
 import { useThemeColors } from '@/hooks/use-theme-colors';
@@ -35,6 +36,7 @@ export default function SettingsScreen() {
   const [homeAddress, setHomeAddress] = useState('');
   const [advanceDays, setAdvanceDays] = useState('3');
   const [saved, setSaved] = useState(false);
+  const toastRef = useRef<ToastRef>(null);
   const [loading, setLoading] = useState(true);
 
   // Notification state
@@ -109,6 +111,7 @@ export default function SettingsScreen() {
 
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
+      toastRef.current?.show('Đã lưu cài đặt thành công', 'success');
 
       // Recalculate reminders with new advance days
       if (notifPermission === 'granted') {
@@ -143,6 +146,7 @@ export default function SettingsScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <Toast ref={toastRef} />
       {/* Header */}
       <View style={[styles.header, { backgroundColor: Colors.secondary }]}>
         <Text style={styles.headerTitle}>⚙️ Cài đặt</Text>

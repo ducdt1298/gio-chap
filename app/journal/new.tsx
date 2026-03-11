@@ -1,9 +1,9 @@
 /**
- * New Journal Event Screen — Giỗ Chạp Phase 2
- * Create a new ritual event entry.
+ * New Journal Event Screen — Giỗ Chạp Phase 2.5E
+ * All-in-one form: event details, photos, shopping list in one screen.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -14,21 +14,46 @@ import {
   Alert,
   Platform,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import Toast, { type ToastRef } from '@/components/Toast';
+import DatePickerField from '@/components/DatePickerField';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
 
 import { useThemeColors } from '@/hooks/use-theme-colors';
 import { Colors, Spacing, BorderRadius, FontSizes } from '@/constants/theme';
-import { insertEvent, EVENT_TYPES, generateId } from '@/lib/db/journal';
+import { insertEvent, addPhotoToEvent, EVENT_TYPES, generateId } from '@/lib/db/journal';
 import { getAllAncestors, type AncestorRow } from '@/lib/db/database';
 import { dateToLunar, formatLunarDate } from '@/lib/lunar/converter';
+
+// Shopping item categories
+const SHOPPING_CATEGORIES = [
+  { key: 'hoa', label: '🌸 Hoa', placeholder: 'Hoa cúc, hoa hồng...' },
+  { key: 'traicay', label: '🍎 Trái cây', placeholder: 'Ngũ quả...' },
+  { key: 'doma', label: '🏮 Đồ mã', placeholder: 'Vàng mã, quần áo...' },
+  { key: 'thucpham', label: '🍖 Thực phẩm', placeholder: 'Gà, xôi, chè...' },
+  { key: 'nhang', label: '🕯️ Nhang & Nến', placeholder: 'Nhang trầm, nến...' },
+  { key: 'khac', label: '📦 Khác', placeholder: 'Rượu, trà, bánh...' },
+];
+
+interface TempShoppingItem {
+  id: string;
+  name: string;
+  quantity: string;
+  category: string;
+}
 
 export default function NewJournalEventScreen() {
   const colors = useThemeColors();
   const router = useRouter();
+  const params = useLocalSearchParams<{ date?: string }>();
+  const toastRef = useRef<ToastRef>(null);
 
+  // Event details
   const [title, setTitle] = useState('');
   const [eventType, setEventType] = useState('custom');
   const [dateStr, setDateStr] = useState(() => {
+    if (params.date && params.date.match(/^\d{4}-\d{2}-\d{2}$/)) return params.date;
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   });
@@ -37,11 +62,23 @@ export default function NewJournalEventScreen() {
   const [ancestors, setAncestors] = useState<AncestorRow[]>([]);
   const [showAncestorPicker, setShowAncestorPicker] = useState(false);
 
+  // Inline photos (temp URIs before save)
+  const [tempPhotos, setTempPhotos] = useState<string[]>([]);
+
+  // Inline shopping list
+  const [shoppingItems, setShoppingItems] = useState<TempShoppingItem[]>([]);
+  const [newItemName, setNewItemName] = useState('');
+  const [newItemQty, setNewItemQty] = useState('');
+  const [newItemCategory, setNewItemCategory] = useState('khac');
+  const [showShoppingForm, setShowShoppingForm] = useState(false);
+
+  const [saving, setSaving] = useState(false);
+
   useEffect(() => {
     getAllAncestors().then(setAncestors).catch(console.error);
   }, []);
 
-  // Auto-suggest title when event type or ancestor changes
+  // Auto-suggest title
   useEffect(() => {
     const type = EVENT_TYPES[eventType];
     const ancestor = ancestors.find(a => a.id === ancestorId);
@@ -58,9 +95,42 @@ export default function NewJournalEventScreen() {
       const [y, m, d] = dateStr.split('-').map(Number);
       const lunar = dateToLunar(new Date(y, m - 1, d));
       return formatLunarDate(lunar);
-    } catch {
-      return '';
+    } catch { return ''; }
+  };
+
+  const handlePickPhotos = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        quality: 0.8,
+        allowsMultipleSelection: true,
+      });
+      if (!result.canceled && result.assets) {
+        setTempPhotos(prev => [...prev, ...result.assets.map(a => a.uri)]);
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
     }
+  };
+
+  const removePhoto = (index: number) => {
+    setTempPhotos(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const addShoppingItem = () => {
+    if (!newItemName.trim()) return;
+    setShoppingItems(prev => [...prev, {
+      id: generateId(),
+      name: newItemName.trim(),
+      quantity: newItemQty.trim() || '1',
+      category: newItemCategory,
+    }]);
+    setNewItemName('');
+    setNewItemQty('');
+  };
+
+  const removeShoppingItem = (id: string) => {
+    setShoppingItems(prev => prev.filter(item => item.id !== id));
   };
 
   const handleSave = async () => {
@@ -68,11 +138,8 @@ export default function NewJournalEventScreen() {
       Alert.alert('Lỗi', 'Vui lòng nhập tiêu đề sự kiện');
       return;
     }
-    if (!dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
-      Alert.alert('Lỗi', 'Ngày không hợp lệ (định dạng YYYY-MM-DD)');
-      return;
-    }
 
+    setSaving(true);
     try {
       const id = generateId();
       await insertEvent({
@@ -85,12 +152,20 @@ export default function NewJournalEventScreen() {
         notes: notes.trim(),
       });
 
-      Alert.alert('Thành công', 'Đã tạo ghi chép mới', [
-        { text: 'OK', onPress: () => router.replace(`/journal/${id}`) },
-      ]);
+      // Save photos
+      for (const uri of tempPhotos) {
+        await addPhotoToEvent(id, uri);
+      }
+
+      // TODO: Save shopping items when shopping CRUD is built in Phase 2B
+
+      toastRef.current?.show('Đã tạo ghi chép mới', 'success');
+      setTimeout(() => router.replace(`/journal/${id}`), 1200);
     } catch (error) {
       console.error('Error saving event:', error);
       Alert.alert('Lỗi', 'Không thể lưu sự kiện');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -98,6 +173,7 @@ export default function NewJournalEventScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <Toast ref={toastRef} />
       {/* Header */}
       <View style={[styles.header, { backgroundColor: Colors.secondary }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
@@ -143,18 +219,13 @@ export default function NewJournalEventScreen() {
           placeholderTextColor={colors.textMuted}
         />
 
-        {/* Date */}
-        <Text style={[styles.label, { color: colors.textSecondary }]}>Ngày (Dương lịch) *</Text>
-        <TextInput
-          style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
+        {/* Date — DatePicker */}
+        <DatePickerField
+          label="Ngày (Dương lịch) *"
           value={dateStr}
-          onChangeText={setDateStr}
-          placeholder="YYYY-MM-DD"
-          placeholderTextColor={colors.textMuted}
+          onChange={setDateStr}
+          showLunar={true}
         />
-        {dateStr.match(/^\d{4}-\d{2}-\d{2}$/) && (
-          <Text style={[styles.lunarHint, { color: Colors.primary }]}>🌙 {getLunarDateStr()}</Text>
-        )}
 
         {/* Linked Ancestor */}
         <Text style={[styles.label, { color: colors.textSecondary }]}>Liên kết Gia tiên (tuỳ chọn)</Text>
@@ -168,7 +239,6 @@ export default function NewJournalEventScreen() {
               : 'Chọn gia tiên...'}
           </Text>
         </TouchableOpacity>
-
         {showAncestorPicker && (
           <View style={[styles.ancestorList, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <TouchableOpacity
@@ -189,8 +259,110 @@ export default function NewJournalEventScreen() {
           </View>
         )}
 
+        {/* ===== INLINE PHOTOS ===== */}
+        <View style={[styles.sectionDivider, { borderTopColor: colors.border }]}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>📸 Ảnh mâm cúng</Text>
+        </View>
+        {tempPhotos.length > 0 && (
+          <View style={styles.photoGrid}>
+            {tempPhotos.map((uri, idx) => (
+              <View key={idx} style={styles.photoItem}>
+                <Image source={{ uri }} style={styles.photoImage} contentFit="cover" />
+                <TouchableOpacity style={styles.photoRemove} onPress={() => removePhoto(idx)}>
+                  <Text style={styles.photoRemoveText}>✕</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        )}
+        <TouchableOpacity
+          style={[styles.addMediaBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+          onPress={handlePickPhotos}
+        >
+          <Text style={[styles.addMediaBtnText, { color: Colors.primary }]}>📷 Chọn ảnh ({tempPhotos.length})</Text>
+        </TouchableOpacity>
+
+        {/* ===== INLINE SHOPPING LIST ===== */}
+        <View style={[styles.sectionDivider, { borderTopColor: colors.border }]}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>🛒 Danh sách đồ cúng</Text>
+        </View>
+        {shoppingItems.length > 0 && (
+          <View style={[styles.shoppingList, { borderColor: colors.border }]}>
+            {shoppingItems.map(item => {
+              const cat = SHOPPING_CATEGORIES.find(c => c.key === item.category);
+              return (
+                <View key={item.id} style={[styles.shoppingItem, { borderBottomColor: colors.borderLight }]}>
+                  <Text style={[styles.shoppingItemText, { color: colors.text }]}>
+                    {cat?.label.split(' ')[0]} {item.name}
+                  </Text>
+                  <Text style={[styles.shoppingItemQty, { color: colors.textMuted }]}>x{item.quantity}</Text>
+                  <TouchableOpacity onPress={() => removeShoppingItem(item.id)}>
+                    <Text style={{ color: Colors.error, fontSize: 16 }}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+              );
+            })}
+          </View>
+        )}
+
+        {showShoppingForm ? (
+          <View style={[styles.shoppingForm, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            {/* Category chips */}
+            <View style={styles.catGrid}>
+              {SHOPPING_CATEGORIES.map(cat => (
+                <TouchableOpacity
+                  key={cat.key}
+                  style={[
+                    styles.catChip,
+                    { borderColor: colors.border },
+                    newItemCategory === cat.key && { backgroundColor: Colors.primary, borderColor: Colors.primary },
+                  ]}
+                  onPress={() => setNewItemCategory(cat.key)}
+                >
+                  <Text style={[
+                    { fontSize: 12, color: colors.textSecondary },
+                    newItemCategory === cat.key && { color: '#fff' },
+                  ]}>
+                    {cat.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={styles.shoppingInputRow}>
+              <TextInput
+                style={[styles.shoppingInput, { flex: 2, backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]}
+                value={newItemName}
+                onChangeText={setNewItemName}
+                placeholder="Tên đồ..."
+                placeholderTextColor={colors.textMuted}
+              />
+              <TextInput
+                style={[styles.shoppingInput, { flex: 0.7, backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]}
+                value={newItemQty}
+                onChangeText={setNewItemQty}
+                placeholder="SL"
+                placeholderTextColor={colors.textMuted}
+                keyboardType="numeric"
+              />
+              <TouchableOpacity
+                style={[styles.shoppingAddBtn, { backgroundColor: Colors.primary }]}
+                onPress={addShoppingItem}
+              >
+                <Text style={{ color: '#fff', fontWeight: '700' }}>+</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={[styles.addMediaBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+            onPress={() => setShowShoppingForm(true)}
+          >
+            <Text style={[styles.addMediaBtnText, { color: Colors.primary }]}>➕ Thêm đồ cúng ({shoppingItems.length})</Text>
+          </TouchableOpacity>
+        )}
+
         {/* Notes */}
-        <Text style={[styles.label, { color: colors.textSecondary }]}>Ghi chú</Text>
+        <Text style={[styles.label, { color: colors.textSecondary, marginTop: Spacing.lg }]}>Ghi chú</Text>
         <TextInput
           style={[styles.input, styles.textArea, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
           value={notes}
@@ -203,10 +375,11 @@ export default function NewJournalEventScreen() {
 
         {/* Save Button */}
         <TouchableOpacity
-          style={[styles.saveBtn, { backgroundColor: Colors.primary }]}
+          style={[styles.saveBtn, { backgroundColor: Colors.primary, opacity: saving ? 0.6 : 1 }]}
           onPress={handleSave}
+          disabled={saving}
         >
-          <Text style={styles.saveBtnText}>💾 Tạo sự kiện</Text>
+          <Text style={styles.saveBtnText}>{saving ? 'Đang lưu...' : '💾 Tạo sự kiện'}</Text>
         </TouchableOpacity>
 
         <View style={{ height: Spacing.xxl * 2 }} />
@@ -232,66 +405,89 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: FontSizes.lg, fontWeight: '800', color: '#fff' },
   content: { padding: Spacing.lg },
   label: {
-    fontSize: FontSizes.sm,
-    fontWeight: '600',
-    marginTop: Spacing.md,
-    marginBottom: Spacing.xs,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    fontSize: FontSizes.sm, fontWeight: '600',
+    marginTop: Spacing.md, marginBottom: Spacing.xs,
+    textTransform: 'uppercase', letterSpacing: 0.5,
   },
   input: {
-    borderWidth: 1,
-    borderRadius: BorderRadius.md,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
+    borderWidth: 1, borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,
     fontSize: FontSizes.md,
   },
-  textArea: {
-    minHeight: 100,
-    textAlignVertical: 'top',
-  },
-  pickerBtn: {
-    justifyContent: 'center',
-  },
-  lunarHint: {
-    fontSize: FontSizes.sm,
-    fontWeight: '600',
-    marginTop: Spacing.xs,
-    marginLeft: Spacing.xs,
-  },
-  typeGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.xs,
-  },
+  textArea: { minHeight: 100, textAlignVertical: 'top' },
+  pickerBtn: { justifyContent: 'center' },
+  typeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.xs },
   typeChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.full,
-    borderWidth: 1,
-    gap: 4,
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.full, borderWidth: 1, gap: 4,
   },
   typeChipActive: {},
   typeChipIcon: { fontSize: 14 },
   typeChipText: { fontSize: FontSizes.sm, fontWeight: '600' },
   ancestorList: {
-    borderWidth: 1,
-    borderRadius: BorderRadius.md,
-    marginTop: Spacing.xs,
-    maxHeight: 200,
+    borderWidth: 1, borderRadius: BorderRadius.md,
+    marginTop: Spacing.xs, maxHeight: 200,
   },
   ancestorItem: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
+
+  // Section divider
+  sectionDivider: {
+    borderTopWidth: 1, marginTop: Spacing.lg, paddingTop: Spacing.md,
+  },
+  sectionTitle: { fontSize: FontSizes.lg, fontWeight: '700', marginBottom: Spacing.sm },
+
+  // Photos
+  photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.xs, marginBottom: Spacing.sm },
+  photoItem: { width: '30%', aspectRatio: 1, borderRadius: BorderRadius.md, overflow: 'hidden' },
+  photoImage: { width: '100%', height: '100%' },
+  photoRemove: {
+    position: 'absolute', top: 4, right: 4,
+    backgroundColor: 'rgba(0,0,0,0.6)', width: 24, height: 24,
+    borderRadius: 12, alignItems: 'center', justifyContent: 'center',
+  },
+  photoRemoveText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  addMediaBtn: {
+    borderWidth: 1, borderStyle: 'dashed', borderRadius: BorderRadius.md,
+    paddingVertical: Spacing.md, alignItems: 'center',
+  },
+  addMediaBtnText: { fontWeight: '600', fontSize: FontSizes.md },
+
+  // Shopping
+  shoppingList: { borderWidth: 1, borderRadius: BorderRadius.md, marginBottom: Spacing.sm },
+  shoppingItem: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth, gap: Spacing.sm,
+  },
+  shoppingItemText: { flex: 1, fontSize: FontSizes.md },
+  shoppingItemQty: { fontSize: FontSizes.sm, fontWeight: '600' },
+  shoppingForm: {
+    borderWidth: 1, borderRadius: BorderRadius.md, padding: Spacing.md,
+  },
+  catGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginBottom: Spacing.sm },
+  catChip: {
+    paddingHorizontal: Spacing.sm, paddingVertical: 4,
+    borderRadius: BorderRadius.full, borderWidth: 1,
+  },
+  shoppingInputRow: { flexDirection: 'row', gap: Spacing.xs, alignItems: 'center' },
+  shoppingInput: {
+    borderWidth: 1, borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.sm, paddingVertical: Spacing.xs,
+    fontSize: FontSizes.sm,
+  },
+  shoppingAddBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    alignItems: 'center', justifyContent: 'center',
+  },
+
+  // Save
   saveBtn: {
-    marginTop: Spacing.xl,
-    paddingVertical: Spacing.md,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
+    marginTop: Spacing.xl, paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.full, alignItems: 'center',
   },
   saveBtnText: { color: '#fff', fontSize: FontSizes.lg, fontWeight: '700' },
 });

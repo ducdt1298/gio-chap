@@ -3,7 +3,7 @@
  * View event details, photos, shopping list summary, and notes.
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -22,6 +22,7 @@ import * as ImagePicker from 'expo-image-picker';
 
 import { useThemeColors } from '@/hooks/use-theme-colors';
 import { Colors, Spacing, BorderRadius, FontSizes, Shadows } from '@/constants/theme';
+import Toast, { type ToastRef } from '@/components/Toast';
 import {
   getEventById, updateEvent, deleteEvent, getPhotosForEvent,
   addPhotoToEvent, removePhoto, EVENT_TYPES,
@@ -40,6 +41,7 @@ export default function JournalEventDetailScreen() {
   const [notes, setNotes] = useState('');
   const [editingNotes, setEditingNotes] = useState(false);
   const [selectedPhoto, setSelectedPhoto] = useState<JournalPhotoRow | null>(null);
+  const toastRef = useRef<ToastRef>(null);
 
   const loadData = useCallback(async () => {
     if (!id) return;
@@ -96,6 +98,7 @@ export default function JournalEventDetailScreen() {
           await removePhoto(photoId);
           setPhotos(prev => prev.filter(p => p.id !== photoId));
           setSelectedPhoto(null);
+          toastRef.current?.show('Đã xóa ảnh', 'success');
         },
       },
     ]);
@@ -107,6 +110,7 @@ export default function JournalEventDetailScreen() {
       await updateEvent({ ...event, notes: notes.trim() });
       setEvent({ ...event, notes: notes.trim() });
       setEditingNotes(false);
+      toastRef.current?.show('Đã lưu ghi chú', 'success');
     } catch (error) {
       console.error('Error saving notes:', error);
     }
@@ -120,7 +124,8 @@ export default function JournalEventDetailScreen() {
         text: 'Xóa', style: 'destructive',
         onPress: async () => {
           await deleteEvent(event.id);
-          router.back();
+          toastRef.current?.show('Đã xóa sự kiện', 'success');
+          setTimeout(() => router.back(), 1000);
         },
       },
     ]);
@@ -140,15 +145,21 @@ export default function JournalEventDetailScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <Toast ref={toastRef} />
       {/* Header */}
       <View style={[styles.header, { backgroundColor: Colors.secondary }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Text style={styles.backText}>← Về</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle} numberOfLines={1}>{event.title}</Text>
-        <TouchableOpacity onPress={handleDeleteEvent}>
-          <Text style={styles.deleteText}>🗑️</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', gap: 12 }}>
+          <TouchableOpacity onPress={() => router.push(`/journal/edit/${id}`)}>
+            <Text style={styles.deleteText}>✏️</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleDeleteEvent}>
+            <Text style={styles.deleteText}>🗑️</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>

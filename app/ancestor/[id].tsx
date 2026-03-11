@@ -3,7 +3,7 @@
  * View and edit an ancestor profile.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import {
   Alert,
   Platform,
 } from 'react-native';
+import Toast, { type ToastRef } from '@/components/Toast';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 
@@ -33,6 +34,7 @@ export default function AncestorDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [ancestor, setAncestor] = useState<AncestorRow | null>(null);
+  const toastRef = useRef<ToastRef>(null);
 
   useEffect(() => {
     if (id) {
@@ -53,7 +55,8 @@ export default function AncestorDetailScreen() {
           onPress: async () => {
             await deleteAncestor(ancestor.id);
             recalculateAllReminders().catch(console.error);
-            router.back();
+            toastRef.current?.show('Đã xóa hồ sơ gia tiên', 'success');
+            setTimeout(() => router.back(), 1000);
           },
         },
       ]
@@ -89,8 +92,10 @@ export default function AncestorDetailScreen() {
   const deathJd = solarToJulianDay(ancestor.death_day_solar, ancestor.death_month_solar, ancestor.death_year_solar);
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: colors.background }]} contentContainerStyle={styles.content}>
-      {/* Portrait */}
+    <View style={{ flex: 1 }}>
+      <Toast ref={toastRef} />
+      <ScrollView style={[styles.container, { backgroundColor: colors.background }]} contentContainerStyle={styles.content}>
+        {/* Portrait */}
       <View style={styles.portraitSection}>
         {ancestor.photo_uri ? (
           <Image source={{ uri: ancestor.photo_uri }} style={styles.portrait} contentFit="cover" />
@@ -175,6 +180,12 @@ export default function AncestorDetailScreen() {
       {/* Action Buttons */}
       <View style={styles.actions}>
         <TouchableOpacity
+          style={[styles.actionButton, { backgroundColor: Colors.primary }]}
+          onPress={() => router.push(`/ancestor/edit/${id}`)}
+        >
+          <Text style={styles.actionButtonText}>✏️ Sửa thông tin</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
           style={[styles.actionButton, { backgroundColor: Colors.error }]}
           onPress={handleDelete}
         >
@@ -184,6 +195,7 @@ export default function AncestorDetailScreen() {
 
       <View style={{ height: Spacing.xxl * 2 }} />
     </ScrollView>
+    </View>
   );
 }
 
@@ -320,6 +332,7 @@ const styles = StyleSheet.create({
   actions: {
     paddingHorizontal: Spacing.md,
     marginTop: Spacing.lg,
+    gap: Spacing.sm,
   },
   actionButton: {
     paddingVertical: Spacing.md,

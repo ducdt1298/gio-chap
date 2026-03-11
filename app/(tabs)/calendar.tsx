@@ -14,6 +14,7 @@ import {
   Modal,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { useRouter } from 'expo-router';
 
 import { useThemeColors } from '@/hooks/use-theme-colors';
 import { Colors, Spacing, BorderRadius, FontSizes, Shadows } from '@/constants/theme';
@@ -51,6 +52,7 @@ interface DayCellData {
 
 export default function CalendarScreen() {
   const colors = useThemeColors();
+  const router = useRouter();
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth() + 1);
   const [selectedDay, setSelectedDay] = useState<DayCellData | null>(null);
@@ -241,10 +243,14 @@ export default function CalendarScreen() {
                   {cell.isMung1 ? `${cell.lunar.day}/${cell.lunar.month}` : cell.lunar.day}
                 </Text>
                 {cell.hasAnniversary && (
-                  <View style={[styles.annivDot, { backgroundColor: Colors.primary }]} />
+                  <View style={styles.dotsRow}>
+                    <View style={[styles.annivDot, { backgroundColor: Colors.error }]} />
+                  </View>
                 )}
                 {(cell.isRam || cell.isMung1) && !cell.hasAnniversary && (
-                  <View style={[styles.annivDot, { backgroundColor: Colors.secondary, opacity: 0.5 }]} />
+                  <View style={styles.dotsRow}>
+                    <View style={[styles.annivDot, { backgroundColor: Colors.primary }]} />
+                  </View>
                 )}
               </TouchableOpacity>
             );
@@ -254,11 +260,11 @@ export default function CalendarScreen() {
         {/* Legend */}
         <View style={[styles.legend, { borderTopColor: colors.border }]}>
           <View style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: Colors.primary }]} />
+            <View style={[styles.legendDot, { backgroundColor: Colors.error }]} />
             <Text style={[styles.legendText, { color: colors.textSecondary }]}>Ngày Giỗ</Text>
           </View>
           <View style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: Colors.secondary, opacity: 0.5 }]} />
+            <View style={[styles.legendDot, { backgroundColor: Colors.primary }]} />
             <Text style={[styles.legendText, { color: colors.textSecondary }]}>Rằm / Mùng 1</Text>
           </View>
           <View style={styles.legendItem}>
@@ -328,6 +334,18 @@ export default function CalendarScreen() {
                       </View>
                     ))}
                   </View>
+
+                  {/* Create Journal Button */}
+                  <TouchableOpacity
+                    style={[styles.createJournalBtn, { backgroundColor: Colors.primary }]}
+                    onPress={() => {
+                      setShowDayModal(false);
+                      const dateStr = `${selectedDay.solarYear}-${String(selectedDay.solarMonth).padStart(2, '0')}-${String(selectedDay.solarDay).padStart(2, '0')}`;
+                      router.push(`/journal/new?date=${dateStr}`);
+                    }}
+                  >
+                    <Text style={styles.createJournalBtnText}>📓 Tạo nhật ký cho ngày này</Text>
+                  </TouchableOpacity>
                 </View>
               </>
             )}
@@ -533,5 +551,22 @@ const styles = StyleSheet.create({
   hoangDaoItemText: {
     fontSize: FontSizes.sm,
     fontWeight: '600',
+  },
+  dotsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 3,
+    marginTop: 1,
+  },
+  createJournalBtn: {
+    marginTop: Spacing.lg,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+  },
+  createJournalBtnText: {
+    color: '#fff',
+    fontSize: FontSizes.md,
+    fontWeight: '700',
   },
 });
