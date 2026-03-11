@@ -62,11 +62,11 @@ export default function RootLayout() {
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? GioChapDarkTheme : GioChapLightTheme}>
-      <Stack>
+      <Stack screenOptions={{ headerStyle: { backgroundColor: colorScheme === 'dark' ? Colors.dark.surface : Colors.light.headerBackground }, headerTintColor: Colors.light.headerText }}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="ancestor/new" options={{ headerShown: false }} />
-        <Stack.Screen name="ancestor/[id]" options={{ headerShown: false }} />
-        <Stack.Screen name="ancestor/edit/[id]" options={{ headerShown: false }} />
+        <Stack.Screen name="ancestor/new" options={{ title: 'Thêm Gia Tiên' }} />
+        <Stack.Screen name="ancestor/[id]" options={{ title: 'Chi tiết Gia Tiên' }} />
+        <Stack.Screen name="ancestor/edit/[id]" options={{ title: 'Sửa Gia Tiên' }} />
         <Stack.Screen name="journal/index" options={{ headerShown: false }} />
         <Stack.Screen name="journal/new" options={{ headerShown: false }} />
         <Stack.Screen name="journal/[id]" options={{ headerShown: false }} />
